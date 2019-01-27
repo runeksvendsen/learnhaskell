@@ -35,7 +35,7 @@ While Andrew was citing this as an example of GHC Haskell being unpredictable (i
 
 This post is about writing reliably fast code, and then how to write more naive code that is also reliably fast. In particular, how recursion consistently produces excellent code, competitive with heavily optimised C, and how to get similar results from higher order functions. Throughout this post I'll be using GHC 6.8.2, with -O2. Sometimes I'll switch to the C backend (-fvia-C -optc-O2). Also, I don't care about smarter ways to implement this -- we're simply interested in understanding the compiler transformations involved in the actual loops involved.
 
-Understanding strictness and laziness
+## Understanding strictness and laziness
 
 First, let's work out why this ran out of memory. The obvious hard constraint is that we request a list of 1e9 doubles: that is very, very large. It's 8 * 10^9 bytes, if allocated directly, or about 7.5G. Inside a list there is yet further overhead, for the list nodes, and their pointers. So no matter the language, we simply cannot allocate this all in one go without burning gigabytes of memory. The only approach that will work is to lazily generate the list somehow. To confirm this, we can use a strict list data type, just to see how far we get.
 
@@ -116,7 +116,7 @@ And still, there's no hope to allocate that thing:
 
 Strictness is not the solution here.
 
-Traversing structures and garbage collection
+## Traversing structures and garbage collection
 
 So why is the naive version actually allocating the whole list anyway? It was a lazy list, shouldn't it somehow avoid allocating the elements? To understand why it didn't work, we can look at what:
 
@@ -187,7 +187,7 @@ Note that this would be even worse if we'd been in a strict language: the initia
 
 Now we have enough information to solve the problem: make sure we make only one traversal of the huge list. so we don't need to hang onto it.
 
-Lazy lists are OK
+## Lazy lists are OK
 
 The simple thing to do then, and the standard functional approach for the last 40 years of functional programming is to write a loop to do both sum and length at once:
 
@@ -248,7 +248,7 @@ Also, we can see it ran in constant space: 24k bytes maximum allocated in the he
 
 However, this does suggest that we can do better -- much better -- by avoiding any list node allocation at all and keeping off the bus. We just need to prevent list nodes from being allocated at all -- by keeping only the current list value in a register -- if we can stay out of memory, we should see dramatic improvements.
 
-Recursion kicks arse
+## Recursion kicks arse
 
 So let's rewrite the loop to no longer take a list, but instead, the start and end values of the loop as arguments:
 
@@ -293,10 +293,13 @@ Let's compile it with GHC's native code generator first (-O2 -fexcess-precision)
 
 Great. Very good performance! The memory statistics tell a similar rosy story:
 
+```
      20,480 bytes maximum residency (1 sample(s))
       %GC time       0.0%  (0.0% elapsed)
   Alloc rate    10,975 bytes per MUT second
   Productivity 100.0% of total user
+```
+
 So it ran in constant space, did no garbage collection, and was allocating only a few bytes a second. Recursion is the breakfast of champions.
 
 And if we use the C backend to GHC: (-O2 -fexcess-precision -fvia-C -optc-O2), things get seriously fast:
@@ -417,11 +420,11 @@ Quite a bit more junk in the inner loop, which explains the slowdown with -fasm.
 
 Almost identical to GCC, which explains why the performance was so good!
 
-Some lessons
+## Some lessons
 
 Lesson 1: To write predictably fast Haskell -- the kind that competes with C day in and out -- use tail recursion, and ensure all types are inferred as simple machine types, like Int, Word, Float or Double that simple machine representations. The performance is there if you want it.
 
-Lesson 2: Laziness has an overhead -- while it allows you to write new kinds of programs (where lists may be used as control structures), the memory traffic that results can be a penalty if it appears in tight inner loops. Don't rely laziness to give you performance in your inner loops.
+Lesson 2: Laziness has an overhead -- while it allows you to write new kinds of programs (where lists may be used as control structures), the memory traffic that results can be a penalty if it appears in tight inner loops. Don't rely on laziness to give you performance in your inner loops.
 
 Lesson 3: For heavy optimisation, the C backend to GHC is still the way to go. Later this year a new bleeding edge native code generator will be added to GHC, but until then, the C backend is still an awesome weapon.
 
